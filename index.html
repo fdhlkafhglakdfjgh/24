@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Интерактивный ёлочный шар</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        .controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        button {
+            padding: 5px 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div class="controls">
+        <button id="toggleView">Переключить вид</button>
+    </div>
+    <script>
+        let scene, camera, renderer, sphere, innerSphere, stars;
+        let isInside = false; // Флаг переключения камеры
+        let isDragging = false; // Флаг для вращения мышью
+        let previousMousePosition = { x: 0, y: 0 };
+
+        function init() {
+            // Создаём сцену и камеру
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            // Рендерер
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Добавляем звёздное небо
+            createStars();
+
+            // Внешний шар
+            const sphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+            const sphereMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+            sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            scene.add(sphere);
+
+            // Внутренний шар
+            const innerGeometry = new THREE.SphereGeometry(1.8, 32, 32);
+            const innerMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+            innerSphere = new THREE.Mesh(innerGeometry, innerMaterial);
+            scene.add(innerSphere);
+
+            // Загрузка текстур автоматически
+            loadTexture('sphere_texture.jpg', sphere); // Текстура внешнего шара
+            loadTexture('inner_texture.jpg', innerSphere); // Текстура внутреннего шара
+
+            // Обработчики событий
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('wheel', onZoom);
+            document.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', () => isDragging = false);
+            document.getElementById('toggleView').addEventListener('click', toggleView);
+
+            animate(); // Запуск анимации
+        }
+
+        // Создаём звёзды
+        function createStars() {
+            const starGeometry = new THREE.BufferGeometry();
+            const starVertices = [];
+            const starColors = [];
+
+            for (let i = 0; i < 5000; i++) {
+                // Координаты
+                starVertices.push((Math.random() - 0.5) * 2000);
+                starVertices.push((Math.random() - 0.5) * 2000);
+                starVertices.push((Math.random() - 0.5) * 2000);
+
+                // Цвет
+                starColors.push(Math.random(), Math.random(), Math.random());
+            }
+
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+
+            const starMaterial = new THREE.PointsMaterial({
+                size: 1.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+        }
+
+        // Загрузка текстуры по URL
+        function loadTexture(url, targetMesh) {
+            const loader = new THREE.TextureLoader();
+            loader.load(
+                url,
+                (texture) => {
+                    targetMesh.material.map = texture;
+                    targetMesh.material.needsUpdate = true;
+                    console.log(`Текстура загружена: ${url}`);
+                },
+                undefined,
+                (err) => console.error(`Ошибка загрузки текстуры ${url}:`, err)
+            );
+        }
+
+        // Переключение вида
+        function toggleView() {
+            isInside = !isInside;
+            if (isInside) {
+                camera.position.set(0, 0, 0);
+                camera.lookAt(1, 0, 0);
+            } else {
+                camera.position.set(0, 0, 5);
+                camera.lookAt(0, 0, 0);
+            }
+        }
+
+        // Зумирование колёсиком мыши
+        function onZoom(event) {
+            const delta = event.deltaY * 0.01;
+            camera.position.z += delta;
+            camera.position.z = Math.max(1, Math.min(20, camera.position.z)); // Ограничение зума
+        }
+
+        // Вращение сцены мышью
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+        }
+
+        function onMouseMove(event) {
+            if (!isDragging) return;
+
+            const deltaMove = {
+                x: event.clientX - previousMousePosition.x,
+                y: event.clientY - previousMousePosition.y
+            };
+
+            // Вращаем сцену вокруг осей
+            sphere.rotation.y += deltaMove.x * 0.005;
+            sphere.rotation.x += deltaMove.y * 0.005;
+            innerSphere.rotation.y += deltaMove.x * 0.005;
+            innerSphere.rotation.x += deltaMove.y * 0.005;
+
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+        }
+
+        // Обновление сцены при изменении размера окна
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Анимация сцены
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Плавное вращение звёзд
+            if (stars) stars.rotation.y += 0.0005;
+
+            renderer.render(scene, camera);
+        }
+
+        init(); // Запуск сцены
+    </script>
+</body>
+</html>
